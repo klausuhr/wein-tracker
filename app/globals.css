@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --bg-cream: #f6efe3;
+  --bg-sand: #e9ddca;
+  --bg-ink: #1f1b17;
+  --accent-wine: #6f1d1b;
+  --accent-gold: #d4a373;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(1000px 400px at -10% -10%, #efe1c8 0%, transparent 55%),
+    radial-gradient(900px 420px at 120% 0%, #dfceb2 0%, transparent 60%),
+    linear-gradient(180deg, var(--bg-cream) 0%, #f4ebde 50%, #f8f2e9 100%);
+  color: var(--bg-ink);
+  font-family: var(--font-body), "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-heading), Georgia, serif;
+  letter-spacing: 0.2px;
+}
+
+.grain-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background-image: radial-gradient(rgba(0, 0, 0, 0.03) 0.6px, transparent 0.6px);
+  background-size: 3px 3px;
+  opacity: 0.15;
+  z-index: 0;
+}
+
+.ui-shell {
+  position: relative;
+  z-index: 1;
+}

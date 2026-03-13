@@ -1,0 +1,56 @@
+import { NextResponse } from "next/server";
+import { getServerEnv } from "@/lib/env";
+import { createServerAdminClient } from "@/lib/supabase/server-admin";
+
+export async function GET(request: Request) {
+  const env = getServerEnv();
+  if (env.CRON_SECRET) {
+    const authHeader = request.headers.get("authorization");
+    if (authHeader !== `Bearer ${env.CRON_SECRET}`) {
+      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    }
+  }
+
+  const supabase = createServerAdminClient();
+
+  const [wineTotalRes, onSaleRes, lastScrapedRes, recentRunsRes] = await Promise.all([
+    supabase.from("wines").select("*", { head: true, count: "exact" }),
+    supabase.from("wines").select("*", { head: true, count: "exact" }).eq("is_on_sale", true),
+    supabase
+      .from("wines")
+      .select("last_scraped_at")
+      .order("last_scraped_at", { ascending: false })
+      .limit(1),
+    supabase
+      .from("job_runs")
+      .select("id,job_name,status,started_at,finished_at,duration_ms,details,created_at")
+      .order("created_at", { ascending: false })
+      .limit(20)
+  ]);
+
+  if (wineTotalRes.error || onSaleRes.error || lastScrapedRes.error || recentRunsRes.error) {
+    return NextResponse.json(
+      {
+        error: "Monitoring query failed.",
+        details: [
+          wineTotalRes.error?.message,
+          onSaleRes.error?.message,
+          lastScrapedRes.error?.message,
+          recentRunsRes.error?.message
+        ].filter(Boolean)
+      },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({
+    ok: true,
+    checked_at: new Date().toISOString(),
+    wines: {
+      total: wineTotalRes.count ?? 0,
+      on_sale: onSaleRes.count ?? 0,
+      last_scraped_at: lastScrapedRes.data?.[0]?.last_scraped_at ?? null
+    },
+    recent_runs: recentRunsRes.data ?? []
+  });
+}
