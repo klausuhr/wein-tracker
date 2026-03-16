@@ -3,7 +3,7 @@ import { createServerAdminClient } from "../supabase/server-admin";
 import type { ScrapedOffer, ShopId } from "../supabase/types";
 
 const BATCH_SIZE = 200;
-const LOOKUP_BATCH_SIZE = 120;
+const LOOKUP_BATCH_SIZE = 25;
 
 type UpsertOffersResult = {
   offers_requested: number;
@@ -100,6 +100,45 @@ export async function upsertWineOffers(
   const canonicalIdByKey = new Map<string, string>();
   for (const row of allCanonicalRows ?? []) {
     canonicalIdByKey.set(row.canonical_key, row.id);
+  }
+
+  const seedByKey = new Map<string, ReturnType<typeof toCanonicalSeed>>();
+  for (const seed of canonicalSeeds) {
+    if (!seedByKey.has(seed.canonical_key)) {
+      seedByKey.set(seed.canonical_key, seed);
+    }
+  }
+
+  for (const key of keys) {
+    if (canonicalIdByKey.has(key)) continue;
+    const { data: singleRow, error: singleLookupError } = await client
+      .from("canonical_wines")
+      .select("id, canonical_key")
+      .eq("canonical_key", key)
+      .maybeSingle();
+
+    if (singleLookupError) {
+      throw new Error(`Canonical single-key lookup failed: ${singleLookupError.message}`);
+    }
+
+    if (singleRow?.id) {
+      canonicalIdByKey.set(key, singleRow.id);
+      continue;
+    }
+
+    const fallbackSeed = seedByKey.get(key);
+    if (!fallbackSeed) continue;
+
+    const { data: insertedRow, error: fallbackInsertError } = await client
+      .from("canonical_wines")
+      .insert(fallbackSeed)
+      .select("id, canonical_key")
+      .single();
+
+    if (fallbackInsertError) {
+      throw new Error(`Canonical fallback insert failed: ${fallbackInsertError.message}`);
+    }
+    canonicalIdByKey.set(insertedRow.canonical_key, insertedRow.id);
   }
 
   const scrapedAt = new Date().toISOString();
