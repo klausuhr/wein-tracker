@@ -16,8 +16,11 @@ export async function GET() {
   ]);
 
   const dbOk = !dbCheck.error;
+  const wineCountOk = !wineCountRes.error;
+  const lastScrapedOk = !lastScrapedRes.error;
+  const ok = dbOk && wineCountOk && lastScrapedOk;
   const response = {
-    ok: dbOk,
+    ok,
     checked_at: new Date().toISOString(),
     response_ms: Date.now() - startedAt,
     db: {
@@ -25,10 +28,14 @@ export async function GET() {
       error: dbCheck.error?.message ?? null
     },
     wines: {
+      count_ok: wineCountOk,
+      count_error: wineCountRes.error?.message ?? null,
       total: wineCountRes.count ?? 0,
+      last_scraped_ok: lastScrapedOk,
+      last_scraped_error: lastScrapedRes.error?.message ?? null,
       last_scraped_at: lastScrapedRes.data?.[0]?.last_scraped_at ?? null
     }
   };
 
-  return NextResponse.json(response, { status: dbOk ? 200 : 503 });
+  return NextResponse.json(response, { status: ok ? 200 : 503 });
 }

@@ -9,6 +9,7 @@ export async function POST(request: Request) {
   const startedAt = new Date();
   const env = getServerEnv();
   const authHeader = request.headers.get("authorization");
+  const supabase = createServerAdminClient();
 
   if (env.CRON_SECRET) {
     const expected = `Bearer ${env.CRON_SECRET}`;
@@ -17,7 +18,28 @@ export async function POST(request: Request) {
     }
   }
 
-  const supabase = createServerAdminClient();
+  if (!env.RESEND_API_KEY) {
+    const finishedAt = new Date();
+    try {
+      await recordJobRun(
+        {
+          jobName: "notify_sales",
+          status: "failed",
+          startedAt,
+          finishedAt,
+          details: { message: "RESEND_API_KEY is required for /api/notify." }
+        },
+        supabase
+      );
+    } catch {
+      // no-op
+    }
+    return NextResponse.json(
+      { error: "RESEND_API_KEY is required for /api/notify." },
+      { status: 500 }
+    );
+  }
+
   const { data, error } = await supabase
     .from("subscriptions")
     .select(

@@ -14,6 +14,7 @@ import {
 } from "../lib/scraper/normalize";
 import { loadLocalEnvForScripts } from "../lib/scripts/load-local-env";
 import type { ScrapedWine } from "../lib/supabase/types";
+import { insertWinePriceHistory } from "../lib/wines/history";
 import { upsertWines } from "../lib/wines/upsert";
 
 const SITEMAP_URL = "https://www.denner.ch/sitemap.product.xml";
@@ -414,6 +415,10 @@ async function run(startedAt: Date) {
 
   const result = await upsertWines(merged);
   log("db_upsert_completed", result);
+
+  const historyResult = await insertWinePriceHistory(merged);
+  log("history_insert_completed", historyResult);
+
   const finishedAt = new Date();
   log("run_finished", { durationMs: finishedAt.getTime() - startedAt.getTime(), status: "ok" });
 
@@ -431,7 +436,8 @@ async function run(startedAt: Date) {
         api_failed: apiFailed,
         fallback_success: fallbackSuccess,
         fallback_failed: fallbackFailed,
-        upsert_written_count: result.writtenCount
+        upsert_written_count: result.writtenCount,
+        history_inserted: historyResult.inserted
       }
     });
   } catch (error) {

@@ -30,6 +30,7 @@ Before first v2 scrape, run SQL migration:
 - `supabase/migrations/20260313_scraper_v2_wines_fields.sql`
 - `supabase/migrations/20260313_job_runs_monitoring.sql`
 - `supabase/migrations/20260313_notification_dedupe.sql`
+- `supabase/migrations/20260313_wine_price_history.sql`
 
 The scraper uses:
 
@@ -41,6 +42,7 @@ Pricing semantics:
 
 - `current_price` / `base_price`: bottle-level prices
 - `case_price` / `case_base_price`: case-level prices
+- each scraper run also writes snapshots to `wine_price_history` for historical trend tracking
 
 ## Monitoring
 
@@ -54,6 +56,16 @@ Pricing semantics:
 - Job run logging:
   - scraper writes `scrape_wines` runs into `job_runs`
   - notification route writes `notify_sales` runs into `job_runs`
+
+## Price History API
+
+- Endpoint:
+  - `GET /api/wines/{id}/history`
+- Query params:
+  - `limit` (optional, default `50`, max `500`)
+- Response:
+  - current wine snapshot (`wine`)
+  - historical points from `wine_price_history` (`points`)
 
 ## Implemented in Step 1
 
