@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { chromium, type Browser, type Locator, type Page } from "playwright";
 import { getServerEnv } from "../lib/env";
 import { recordJobRun } from "../lib/monitoring/job-runs";
@@ -23,7 +24,22 @@ const WINE_PATH_PATTERN = "/de/weinshop/";
 const API_CONCURRENCY = 10;
 const RETRIES = 2;
 
-loadLocalEnvForScripts();
+type RunScrapeWinesOptions = {
+  useFallback?: boolean;
+  loadLocalEnv?: boolean;
+};
+
+type RunScrapeWinesResult = {
+  discovered: number;
+  selected: number;
+  api_success: number;
+  api_skipped: number;
+  api_failed: number;
+  fallback_success: number;
+  fallback_failed: number;
+  upsert_written_count: number;
+  history_inserted: number;
+};
 
 function log(event: string, payload: Record<string, unknown> = {}) {
   console.info(`[scraper] ${event}`, payload);
@@ -316,7 +332,7 @@ async function processInPool<T, R>(
   return results;
 }
 
-async function run(startedAt: Date) {
+async function run(startedAt: Date, options: RunScrapeWinesOptions): Promise<RunScrapeWinesResult> {
   const env = getServerEnv();
 
   log("run_started", {
@@ -369,7 +385,7 @@ async function run(startedAt: Date) {
   let fallbackFailed = 0;
   const fallbackWines: ScrapedWine[] = [];
 
-  if (fallbackTargets.length > 0) {
+  if (options.useFallback !== false && fallbackTargets.length > 0) {
     let browser: Browser | null = null;
     try {
       browser = await chromium.launch({ headless: env.SCRAPER_HEADLESS });
@@ -445,28 +461,59 @@ async function run(startedAt: Date) {
       message: error instanceof Error ? error.message : "unknown_error"
     });
   }
+
+  return {
+    discovered: discovered.length,
+    selected: targetUrls.length,
+    api_success: apiSuccess,
+    api_skipped: apiSkipped,
+    api_failed: apiFailed,
+    fallback_success: fallbackSuccess,
+    fallback_failed: fallbackFailed,
+    upsert_written_count: result.writtenCount,
+    history_inserted: historyResult.inserted
+  };
 }
 
-const startedAt = new Date();
-
-run(startedAt).catch(async (error) => {
-  const finishedAt = new Date();
-  log("run_finished", {
-    status: "failed",
-    message: error instanceof Error ? error.message : "unknown_error"
-  });
-  try {
-    await recordJobRun({
-      jobName: "scrape_wines",
-      status: "failed",
-      startedAt,
-      finishedAt,
-      details: {
-        message: error instanceof Error ? error.message : "unknown_error"
-      }
-    });
-  } catch {
-    // no-op
+export async function runScrapeWines(
+  options: RunScrapeWinesOptions = {}
+): Promise<RunScrapeWinesResult> {
+  if (options.loadLocalEnv) {
+    loadLocalEnvForScripts();
   }
-  process.exit(1);
-});
+
+  const startedAt = new Date();
+
+  try {
+    return await run(startedAt, options);
+  } catch (error) {
+    const finishedAt = new Date();
+    log("run_finished", {
+      status: "failed",
+      message: error instanceof Error ? error.message : "unknown_error"
+    });
+    try {
+      await recordJobRun({
+        jobName: "scrape_wines",
+        status: "failed",
+        startedAt,
+        finishedAt,
+        details: {
+          message: error instanceof Error ? error.message : "unknown_error"
+        }
+      });
+    } catch {
+      // no-op
+    }
+    throw error;
+  }
+}
+
+const isDirectExecution =
+  process.argv[1] != null && pathToFileURL(process.argv[1]).href === import.meta.url;
+
+if (isDirectExecution) {
+  runScrapeWines({ loadLocalEnv: true, useFallback: true }).catch(() => {
+    process.exit(1);
+  });
+}
