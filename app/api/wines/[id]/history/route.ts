@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createServerAdminClient } from "@/lib/supabase/server-admin";
 
+export const dynamic = "force-dynamic";
+
 const paramsSchema = z.object({
   id: z.string().uuid()
 });

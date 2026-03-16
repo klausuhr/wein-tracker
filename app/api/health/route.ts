@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createServerAdminClient } from "@/lib/supabase/server-admin";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const supabase = createServerAdminClient();
   const startedAt = Date.now();

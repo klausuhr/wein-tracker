@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getServerEnv } from "@/lib/env";
 import { createServerAdminClient } from "@/lib/supabase/server-admin";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   const env = getServerEnv();
   if (env.CRON_SECRET) {

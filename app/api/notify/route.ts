@@ -5,6 +5,8 @@ import { recordJobRun } from "@/lib/monitoring/job-runs";
 import { createServerAdminClient } from "@/lib/supabase/server-admin";
 import { createTrackingToken } from "@/lib/tokens/tracking";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: Request) {
   const startedAt = new Date();
   const env = getServerEnv();
