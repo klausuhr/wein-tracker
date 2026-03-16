@@ -9,10 +9,10 @@ export async function GET() {
   const startedAt = Date.now();
 
   const [dbCheck, wineCountRes, lastScrapedRes] = await Promise.all([
-    supabase.from("wines").select("id", { head: true, count: "exact" }).limit(1),
-    supabase.from("wines").select("*", { head: true, count: "exact" }),
+    supabase.from("wine_offers").select("id", { head: true, count: "exact" }).limit(1),
+    supabase.from("wine_offers").select("*", { head: true, count: "exact" }),
     supabase
-      .from("wines")
+      .from("wine_offers")
       .select("last_scraped_at")
       .order("last_scraped_at", { ascending: false })
       .limit(1)

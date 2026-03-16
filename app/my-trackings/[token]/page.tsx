@@ -30,7 +30,7 @@ export default async function MyTrackingsPage({ params, searchParams }: PageProp
   const { data, error } = await supabase
     .from("subscriptions")
     .select(
-      "id, is_confirmed, wines(name,current_price,base_price,case_price,case_size,is_on_sale,wine_type,country,region,vintage_year)"
+      "id, is_confirmed, wine_offers(shop,name,current_price,base_price,case_price,case_size,is_on_sale,wine_type,country,region,vintage_year,canonical_wines(name))"
     )
     .eq("email", payload.email)
     .order("created_at", { ascending: false });
@@ -57,7 +57,26 @@ export default async function MyTrackingsPage({ params, searchParams }: PageProp
           items={(data ?? []).map((row) => ({
             id: row.id,
             is_confirmed: row.is_confirmed,
-            wine: Array.isArray(row.wines) ? row.wines[0] ?? null : row.wines ?? null
+            wine: (() => {
+              const offer = Array.isArray(row.wine_offers) ? row.wine_offers[0] ?? null : row.wine_offers ?? null;
+              if (!offer) return null;
+              const canonical = Array.isArray(offer.canonical_wines)
+                ? offer.canonical_wines[0] ?? null
+                : offer.canonical_wines ?? null;
+              return {
+                shop: offer.shop,
+                name: canonical?.name ?? offer.name,
+                current_price: offer.current_price,
+                base_price: offer.base_price,
+                case_price: offer.case_price,
+                case_size: offer.case_size,
+                is_on_sale: offer.is_on_sale,
+                wine_type: offer.wine_type,
+                country: offer.country,
+                region: offer.region,
+                vintage_year: offer.vintage_year
+              };
+            })()
           }))}
         />
       )}

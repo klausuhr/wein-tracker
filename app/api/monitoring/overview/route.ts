@@ -17,10 +17,10 @@ export async function GET(request: Request) {
   const supabase = createServerAdminClient();
 
   const [wineTotalRes, onSaleRes, lastScrapedRes, recentRunsRes] = await Promise.all([
-    supabase.from("wines").select("*", { head: true, count: "exact" }),
-    supabase.from("wines").select("*", { head: true, count: "exact" }).eq("is_on_sale", true),
+    supabase.from("wine_offers").select("*", { head: true, count: "exact" }),
+    supabase.from("wine_offers").select("*", { head: true, count: "exact" }).eq("is_on_sale", true),
     supabase
-      .from("wines")
+      .from("wine_offers")
       .select("last_scraped_at")
       .order("last_scraped_at", { ascending: false })
       .limit(1),

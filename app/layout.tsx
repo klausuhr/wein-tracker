@@ -16,7 +16,7 @@ const bodyFont = Space_Grotesk({
 
 export const metadata: Metadata = {
   title: "Wein-Ticker",
-  description: "Track wine prices from Denner and get sale alerts."
+  description: "Track wine prices across multiple shops and get sale alerts."
 };
 
 export default function RootLayout({

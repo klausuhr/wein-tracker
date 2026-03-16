@@ -45,10 +45,10 @@ export async function POST(request: Request) {
   const { data, error } = await supabase
     .from("subscriptions")
     .select(
-      "id,email,is_confirmed,wine_id,wines!inner(name,current_price,base_price,is_on_sale)"
+      "id,email,is_confirmed,offer_id,wine_offers!inner(id,shop,name,current_price,base_price,is_on_sale,canonical_wines(name))"
     )
     .eq("is_confirmed", true)
-    .eq("wines.is_on_sale", true);
+    .eq("wine_offers.is_on_sale", true);
 
   if (error) {
     const finishedAt = new Date();
@@ -71,11 +71,12 @@ export async function POST(request: Request) {
   let skipped = 0;
 
   for (const row of data ?? []) {
-    const wine = Array.isArray(row.wines) ? row.wines[0] : row.wines;
-    if (!wine) continue;
+    const offer = Array.isArray(row.wine_offers) ? row.wine_offers[0] : row.wine_offers;
+    if (!offer) continue;
+    const canonical = Array.isArray(offer.canonical_wines) ? offer.canonical_wines[0] : offer.canonical_wines;
 
-    const currentPrice = Number(wine.current_price);
-    const basePrice = wine.base_price == null ? null : Number(wine.base_price);
+    const currentPrice = Number(offer.current_price);
+    const basePrice = offer.base_price == null ? null : Number(offer.base_price);
 
     const { data: eventRow, error: eventSelectError } = await supabase
       .from("notification_events")
@@ -106,7 +107,7 @@ export async function POST(request: Request) {
 
       await sendSaleAlertEmail({
         to: row.email,
-        wineName: wine.name,
+        wineName: `${canonical?.name ?? offer.name} (${offer.shop})`,
         currentPrice,
         basePrice,
         trackingUrl
@@ -133,7 +134,8 @@ export async function POST(request: Request) {
       } else {
         const { error: insertError } = await supabase.from("notification_events").insert({
           subscription_id: row.id,
-          wine_id: row.wine_id,
+          wine_id: null,
+          offer_id: row.offer_id ?? offer.id,
           last_notified_price: currentPrice,
           last_notified_base_price: basePrice,
           last_notified_at: now,

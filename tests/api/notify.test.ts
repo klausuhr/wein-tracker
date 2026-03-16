@@ -39,8 +39,16 @@ import { POST } from "@/app/api/notify/route";
 type SubscriptionRow = {
   id: string;
   email: string;
-  wine_id: string;
-  wines: { name: string; current_price: number; base_price: number | null; is_on_sale: boolean };
+  offer_id: string;
+  wine_offers: {
+    id: string;
+    shop: "denner" | "ottos";
+    name: string;
+    current_price: number;
+    base_price: number | null;
+    is_on_sale: boolean;
+    canonical_wines: { name: string };
+  };
 };
 
 function createNotifySupabase(options: {
@@ -127,8 +135,16 @@ describe("POST /api/notify", () => {
     const subscription: SubscriptionRow = {
       id: "sub-1",
       email: "test@example.com",
-      wine_id: "wine-1",
-      wines: { name: "Test Wine", current_price: 10, base_price: 12, is_on_sale: true }
+      offer_id: "offer-1",
+      wine_offers: {
+        id: "offer-1",
+        shop: "denner",
+        name: "Test Wine Offer",
+        current_price: 10,
+        base_price: 12,
+        is_on_sale: true,
+        canonical_wines: { name: "Test Wine" }
+      }
     };
 
     const supabase = createNotifySupabase({

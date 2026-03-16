@@ -6,8 +6,9 @@
 - API: Next.js Route Handlers for subscribe, verify, notify, unsubscribe
 - Data: Supabase PostgreSQL
 - External integrations:
-  - Denner sitemap + product detail API (primary)
-  - Denner website via Playwright fallback (secondary)
+  - Denner sitemap + product detail API
+  - Otto's OCC product search API
+  - optional shop-specific browser fallback adapters
   - Resend for transactional emails
 
 ## Module Boundaries
@@ -16,24 +17,26 @@
 - `lib/supabase/*`: client factories and database access helpers
 - `lib/domain/*`: business rules (sale logic, token handling, validation)
 - `lib/email/*`: Resend integration and templates
-- `scripts/*`: standalone jobs (scraper, later notification job wrapper)
+- `lib/scraper/*`: source adapters + normalization + matching
+- `scripts/*`: orchestration jobs (multi-shop scrape, maintenance scripts)
 
 ## Data Flows
 
-### Scrape -> Upsert
+### Scrape -> Upsert (Multi-Shop)
 
-1. Script loads Denner product sitemap and discovers wine product URLs.
-2. Script extracts product ids and fetches product details via Denner API.
-3. Script normalizes fields including bottle/case prices and wine metadata.
-4. Script filters to buyable products only.
-5. Script attempts Playwright fallback for product-level API failures.
-6. Script computes sale status from per-bottle price semantics.
-7. Script upserts batches into Supabase `wines`.
-8. Script logs source-level and fallback-level run summary.
+1. Orchestrator executes one adapter run per shop (`denner`, `ottos`, ...).
+2. Each adapter emits normalized `ScrapedOffer` rows with source identity.
+3. Offers are matched to canonical wines using heuristic matching.
+4. Canonical + offers are upserted idempotently.
+5. Price snapshots are written to history with source references.
+6. Per-shop run summary is logged.
+7. Failures are isolated:
+   - one shop can fail while other shops continue and persist.
+8. Final job status is aggregated (`ok`, `partial`, `failed`).
 
 ### Subscribe -> Verify
 
-1. User submits email + selected wine.
+1. User submits email + selected offer.
 2. API validates inputs and inserts unconfirmed subscription with token.
 3. Email service sends verification link.
 4. User opens verification link.
@@ -41,8 +44,8 @@
 
 ### Notify Run
 
-1. Job queries confirmed subscriptions joined with wines.
-2. Filters for wines currently on sale.
+1. Job queries confirmed subscriptions joined with `wine_offers` and `canonical_wines`.
+2. Filters for offers currently on sale.
 3. Sends alert emails.
 4. Logs sent/failed counts.
 
@@ -50,14 +53,16 @@
 
 - Input validation errors: return `400`.
 - Missing resources/token not found: `404`.
-- External service failures (Supabase, Resend, Denner API, Playwright): log and return `500` (API) or exit code `1` (scripts).
-- Product-level API failures in scraper: log and continue with per-item fallback.
-- Product-level fallback failures: log and continue when minimum threshold is still met.
+- External service failures (Supabase, Resend, source APIs, browser fallback): log and return `500` (API) or exit code `1` (scripts).
+- Shop-level scraper failures: isolated and logged without blocking other shops.
+- Product-level failures: logged and skipped unless critical threshold is hit.
 
 ## Design Principles
 
 - Keep business logic in `lib/domain` and out of UI/route handlers.
-- Keep source adapters isolated:
-  - API adapter for primary extraction
-  - Playwright adapter for fallback extraction
+- Keep source adapters isolated behind one contract:
+  - one adapter per shop
+  - shared normalized output contract
+  - shared upsert/matching pipeline
+- Preserve source traceability on all offer and history rows (`shop`, source id, URL).
 - Ensure all external calls are explicit and easy to mock in tests.

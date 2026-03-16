@@ -1,6 +1,44 @@
 # 04 Data Model and Contracts
 
-## Existing Tables
+## Multi-Shop Target Model
+
+### `canonical_wines`
+
+- `id` (uuid, primary key)
+- `canonical_key` (text, unique, normalized matching key)
+- `name` (text, required)
+- `image_url` (text, nullable)
+- `wine_type` (text, nullable)
+- `country` (text, nullable)
+- `region` (text, nullable)
+- `vintage_year` (int, nullable)
+- `category_path` (text, nullable)
+- `bottle_volume_cl` (decimal, nullable)
+- `case_size` (int, nullable)
+- `created_at` (timestamptz, required)
+- `updated_at` (timestamptz, required)
+
+### `wine_offers`
+
+- `id` (uuid, primary key)
+- `canonical_wine_id` (uuid, FK -> canonical_wines.id, required)
+- `shop` (text, required; e.g. `denner`, `ottos`)
+- `shop_product_id` (text, required; source-stable id)
+- `source_url` (text, required)
+- `name` (text, required; source-facing name)
+- `image_url` (text, nullable)
+- `current_price` (decimal, required)
+- `base_price` (decimal, nullable)
+- `case_price` (decimal, nullable)
+- `case_base_price` (decimal, nullable)
+- `is_on_sale` (boolean, required)
+- `last_scraped_at` (timestamptz, required)
+- `created_at` (timestamptz, required)
+- `updated_at` (timestamptz, required)
+- uniqueness contract:
+  - unique `(shop, shop_product_id)`
+
+## Existing Legacy Tables
 
 ### `wines`
 
@@ -28,7 +66,8 @@
 
 - `id` (uuid, primary key)
 - `email` (text, required)
-- `wine_id` (uuid, FK -> wines.id, required)
+- `wine_id` (uuid, FK -> wines.id, legacy compatibility)
+- `offer_id` (uuid, FK -> wine_offers.id, new target link)
 - `is_confirmed` (boolean, required)
 - `confirmation_token` (uuid, required)
 - `created_at` (timestamptz, required)
@@ -40,25 +79,18 @@
   - per-bottle `current_price < base_price`
 - Else `is_on_sale = false`.
 
-## Upsert Contract (`wines`)
+## Upsert Contract (`wine_offers`)
 
-- Conflict target: `slug`
+- Conflict target: `(shop, shop_product_id)`
 - On conflict update fields:
   - `name`
-  - `denner_product_id`
+  - `canonical_wine_id`
   - `source_url`
   - `image_url`
   - `current_price`
   - `base_price`
   - `case_price`
   - `case_base_price`
-  - `wine_type`
-  - `country`
-  - `region`
-  - `vintage_year`
-  - `category_path`
-  - `bottle_volume_cl`
-  - `case_size`
   - `is_on_sale`
   - `last_scraped_at`
 
@@ -74,16 +106,18 @@
 - Name parsing:
   - trim whitespace
   - collapse repeated spaces
-- Slug:
-  - prefer URL-derived slug from product link
-  - fallback to slugified normalized name
-- Metadata parsing:
-  - `country`, `region`, `wine_type`, `vintage_year` from product API fields first.
-  - DOM fallback is allowed only for missing API responses.
+- Canonical matching key:
+  - built from normalized name + vintage + bottle volume + country
+  - deterministic and stable across shops where metadata allows
+- Matching strategy:
+  - strict key match first
+  - fuzzy fallback for same-year/same-volume candidates
+  - conservative threshold to avoid false merges
 
 ## Subscription Contract
 
-- One email can track multiple wines.
+- One email can track multiple offers.
+- Same canonical wine can be tracked across multiple shops.
 - A subscription is active for notifications only if `is_confirmed=true`.
 - Verification endpoint must be idempotent:
   - verifying already-confirmed token returns success-like response.

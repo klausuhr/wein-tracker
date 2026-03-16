@@ -7,27 +7,71 @@ import { createServerAdminClient } from "@/lib/supabase/server-admin";
 
 const bodySchema = z.object({
   email: z.string().email().max(320),
-  wineId: z.string().uuid()
+  offerId: z.string().uuid().optional(),
+  wineId: z.string().uuid().optional()
+}).refine((value) => Boolean(value.offerId || value.wineId), {
+  message: "offerId or wineId is required."
 });
 
 export async function POST(request: Request) {
   try {
     const parsed = bodySchema.parse(await request.json());
     const email = parsed.email.trim().toLowerCase();
-    const wineId = parsed.wineId;
+    const offerId = parsed.offerId ?? null;
+    const legacyWineId = parsed.wineId ?? null;
 
     const supabase = createServerAdminClient();
-    const { data: wine, error: wineError } = await supabase
-      .from("wines")
-      .select("id, name")
-      .eq("id", wineId)
-      .maybeSingle();
+    let resolvedOfferId = offerId;
+    let resolvedWineId = legacyWineId;
+    let wineName = "";
 
-    if (wineError) {
-      return NextResponse.json({ error: wineError.message }, { status: 500 });
-    }
-    if (!wine) {
-      return NextResponse.json({ error: "Wine not found." }, { status: 404 });
+    if (resolvedOfferId) {
+      const { data: offer, error: offerError } = await supabase
+        .from("wine_offers")
+        .select("id,name,canonical_wines(name)")
+        .eq("id", resolvedOfferId)
+        .maybeSingle();
+
+      if (offerError) {
+        return NextResponse.json({ error: offerError.message }, { status: 500 });
+      }
+      if (!offer) {
+        return NextResponse.json({ error: "Offer not found." }, { status: 404 });
+      }
+      const canonical = Array.isArray(offer.canonical_wines) ? offer.canonical_wines[0] : offer.canonical_wines;
+      wineName = canonical?.name ?? offer.name;
+    } else if (resolvedWineId) {
+      const { data: wine, error: wineError } = await supabase
+        .from("wines")
+        .select("id,name,denner_product_id,slug")
+        .eq("id", resolvedWineId)
+        .maybeSingle();
+
+      if (wineError) {
+        return NextResponse.json({ error: wineError.message }, { status: 500 });
+      }
+      if (!wine) {
+        return NextResponse.json({ error: "Wine not found." }, { status: 404 });
+      }
+
+      wineName = wine.name;
+      const productIds = [wine.denner_product_id, wine.slug].filter(
+        (value): value is string => typeof value === "string" && value.length > 0
+      );
+      if (productIds.length > 0) {
+        const { data: offerMatch } = await supabase
+          .from("wine_offers")
+          .select("id")
+          .eq("shop", "denner")
+          .in("shop_product_id", productIds)
+          .limit(1);
+        resolvedOfferId = offerMatch?.[0]?.id ?? null;
+      }
+      if (!resolvedOfferId) {
+        return NextResponse.json({ error: "No offer found for selected wine." }, { status: 404 });
+      }
+    } else {
+      return NextResponse.json({ error: "offerId or wineId is required." }, { status: 400 });
     }
 
     const confirmationToken = crypto.randomUUID();
@@ -35,7 +79,7 @@ export async function POST(request: Request) {
       .from("subscriptions")
       .select("id, is_confirmed")
       .eq("email", email)
-      .eq("wine_id", wineId)
+      .eq("offer_id", resolvedOfferId)
       .maybeSingle();
 
     if (existingError) {
@@ -52,7 +96,12 @@ export async function POST(request: Request) {
     if (existing) {
       const { error: updateError } = await supabase
         .from("subscriptions")
-        .update({ confirmation_token: confirmationToken, is_confirmed: false })
+        .update({
+          confirmation_token: confirmationToken,
+          is_confirmed: false,
+          offer_id: resolvedOfferId,
+          wine_id: resolvedWineId
+        })
         .eq("id", existing.id);
       if (updateError) {
         return NextResponse.json({ error: updateError.message }, { status: 500 });
@@ -60,7 +109,8 @@ export async function POST(request: Request) {
     } else {
       const { error: insertError } = await supabase.from("subscriptions").insert({
         email,
-        wine_id: wineId,
+        wine_id: resolvedWineId,
+        offer_id: resolvedOfferId,
         is_confirmed: false,
         confirmation_token: confirmationToken
       });
@@ -75,7 +125,7 @@ export async function POST(request: Request) {
     await sendVerificationEmail({
       to: email,
       verifyUrl: verifyUrl.toString(),
-      wineName: wine.name
+      wineName
     });
 
     return NextResponse.json({

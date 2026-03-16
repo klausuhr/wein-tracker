@@ -1,6 +1,30 @@
 # Wein-Ticker
 
-Next.js + Supabase + API-first scraper (with Playwright fallback) for tracking Denner wine prices.
+Next.js + Supabase + API-first scraper for tracking wine prices across multiple shops.
+
+## Production Status (March 16, 2026)
+
+- App is deployed on Vercel and connected to production Supabase.
+- Production health and monitoring endpoints are working:
+  - `GET /api/health`
+  - `GET /api/monitoring/overview` (Bearer `CRON_SECRET`)
+- Manual production runs were validated:
+  - scrape run logged in `job_runs` as `scrape_wines`
+  - notify run logged in `job_runs` as `notify_sales`
+- Monitoring/health responses are configured as dynamic + no-store to avoid stale cache results.
+
+## Multi-Shop Roadmap (In Progress)
+
+- Source model is being expanded from Denner-only to multi-shop (`denner`, `ottos`).
+- Target storage model:
+  - `canonical_wines`: normalized wine identity across shops
+  - `wine_offers`: shop-specific offer rows (price, sale state, source URL)
+- Tracking model:
+  - users track offers (not only one source table row)
+  - same wine can be tracked from both Denner and Otto's independently
+- Scraper runtime model:
+  - per-shop adapters behind one orchestrator
+  - one shop failure does not stop other shops
 
 ## 1) Setup
 
@@ -36,13 +60,27 @@ The scraper uses:
 
 - `https://www.denner.ch/sitemap.product.xml` for wine URL discovery
 - `https://www.denner.ch/api/product/{id}?locale=de` for structured product data
-- Playwright as per-item fallback only when API extraction fails
+- `https://api.ottos.ch/occ/v2/ottos/products/search` for Otto's catalog pages
+- Playwright fallback is currently Denner-specific and optional in serverless mode
+
+## Scheduled Production Jobs (Vercel Cron)
+
+- Endpoint:
+  - `GET /api/scrape` (requires `Authorization: Bearer <CRON_SECRET>` when `CRON_SECRET` is set)
+  - Note: Vercel scrape endpoint runs with `useFallback: false` (API-first only) for serverless stability.
+- Cron schedule (`vercel.json`, UTC):
+  - scrape: `05:05` UTC (`/api/scrape`)
+  - notify: `05:20` UTC (`/api/notify`)
+- Timezone note for Zurich:
+  - CET (winter): 06:05 / 06:20
+  - CEST (summer): 07:05 / 07:20
 
 Pricing semantics:
 
 - `current_price` / `base_price`: bottle-level prices
 - `case_price` / `case_base_price`: case-level prices
 - each scraper run also writes snapshots to `wine_price_history` for historical trend tracking
+- snapshots carry source reference (`shop`, source product identity) for auditability
 
 ## Monitoring
 
@@ -56,6 +94,7 @@ Pricing semantics:
 - Job run logging:
   - scraper writes `scrape_wines` runs into `job_runs`
   - notification route writes `notify_sales` runs into `job_runs`
+  - scraper details include per-shop summary for partial-failure visibility
 
 ## Price History API
 
@@ -66,6 +105,25 @@ Pricing semantics:
 - Response:
   - current wine snapshot (`wine`)
   - historical points from `wine_price_history` (`points`)
+
+## Planned API Contract Shift
+
+- `POST /api/subscribe` is moving to offer-level payload:
+  - old: `wineId`
+  - new: `offerId`
+- Migration window should keep temporary compatibility with both fields.
+
+## Production Smoke Commands
+
+```powershell
+$secret = Read-Host "CRON_SECRET"
+$headers = @{ Authorization = "Bearer $secret" }
+
+Invoke-RestMethod -Method GET -Uri "https://wein-tracker-vercel.vercel.app/api/scrape" -Headers $headers | ConvertTo-Json -Depth 6
+Invoke-RestMethod -Method POST -Uri "https://wein-tracker-vercel.vercel.app/api/notify" -Headers $headers | ConvertTo-Json -Depth 6
+Invoke-RestMethod -Method GET -Uri "https://wein-tracker-vercel.vercel.app/api/monitoring/overview" -Headers $headers | ConvertTo-Json -Depth 6
+Invoke-RestMethod -Method GET -Uri "https://wein-tracker-vercel.vercel.app/api/health" | ConvertTo-Json -Depth 6
+```
 
 ## Implemented in Step 1
 

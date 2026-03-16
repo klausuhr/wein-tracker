@@ -7,6 +7,7 @@ type TrackingItem = {
   id: string;
   is_confirmed: boolean;
   wine: {
+    shop: "denner" | "ottos";
     name: string;
     current_price: number;
     base_price: number | null;
@@ -72,6 +73,9 @@ export function MyTrackingsList({ token, items }: Props) {
           className="rounded-2xl border border-[#d6c6ad] bg-[#fffdf8] p-4 shadow-[0_10px_30px_rgba(72,45,26,0.08)]"
         >
           <p className="font-semibold text-[#2e231c]">{item.wine?.name ?? "Unknown wine"}</p>
+          <p className="mt-1 text-xs uppercase tracking-[0.08em] text-[#7b6655]">
+            Shop: {item.wine?.shop ?? "-"}
+          </p>
           <p className="mt-1 text-sm text-[#614d3d]">
             CHF {item.wine ? Number(item.wine.current_price).toFixed(2) : "-"}
             {item.wine?.base_price != null

@@ -20,7 +20,7 @@ function createHealthSupabase(options: {
 }) {
   return {
     from: vi.fn((table: string) => {
-      if (table !== "wines") {
+      if (table !== "wine_offers") {
         throw new Error(`Unhandled table in test mock: ${table}`);
       }
       return {

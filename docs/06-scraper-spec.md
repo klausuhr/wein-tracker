@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Populate and refresh the `wines` table from Denner wine shop with idempotent upserts.
+Populate and refresh multi-shop wine offers with idempotent upserts and canonical matching.
 
 ## Entry Point
 
@@ -12,22 +12,19 @@ Populate and refresh the `wines` table from Denner wine shop with idempotent ups
 ## Runtime Behavior
 
 1. Validate required env vars.
-2. Load Denner product sitemap and extract product URLs.
-3. Filter URLs to `/de/weinshop/` and deduplicate.
-4. Derive product ids and fetch product details from Denner product API.
-5. Normalize and validate API records.
-6. Keep only buyable products (`availability.forSale=true`).
-7. For API failures, run Playwright fallback extraction per failed item.
-8. Merge API + fallback records and deduplicate by `slug`.
-9. Upsert in batches into Supabase.
-10. Emit run summary and exit.
+2. Execute one adapter run per enabled shop.
+3. Normalize each source row into shared `ScrapedOffer` contract.
+4. Resolve canonical wine identity via matching contract.
+5. Upsert canonical wines and shop offers in batches.
+6. Write offer-level price history snapshots.
+7. Emit per-shop and aggregate run summary (`ok` / `partial` / `failed`).
 
 ## Extracted Fields
 
-- `name`: product title
-- `slug`: from product URL segment; fallback slugify from name
-- `denner_product_id`: stable product id
+- `shop`: source shop id (`denner`, `ottos`, ...)
+- `shop_product_id`: stable source product id
 - `source_url`: canonical product URL
+- `name`: source-facing product title
 - `image_url`: product image source
 - `current_price`: bottle current price
 - `base_price`: bottle previous price (`instead`)
@@ -36,6 +33,11 @@ Populate and refresh the `wines` table from Denner wine shop with idempotent ups
 - `wine_type`, `country`, `region`, `vintage_year`
 - `category_path`, `bottle_volume_cl`, `case_size`
 - `last_scraped_at`: set to current UTC timestamp at write time
+- canonical matching hints:
+  - normalized name key
+  - country
+  - vintage
+  - bottle volume
 
 ## Parsing and Validation Rules
 
@@ -46,26 +48,38 @@ Populate and refresh the `wines` table from Denner wine shop with idempotent ups
 - Compute `is_on_sale` from bottle price contract.
 - Parse metadata from structured API first, fallback only if API missing.
 
+## Adapter Sources
+
+- Denner:
+  - sitemap + product API
+  - optional per-item browser fallback
+- Otto's:
+  - OCC search API:
+    - `GET /occ/v2/ottos/products/search`
+    - query style: `::allCategories:m_10400`
+    - paginated with `currentPage` and `pageSize`
+
 ## Reliability Rules
 
-- Sitemap/API request retry: max 2 retries with backoff.
-- Product API errors: log and continue.
-- Playwright fallback errors: log and continue.
+- Source request retry: max 2 retries with backoff.
+- Product-level mapping failures: log and skip.
+- Shop-level failures: log and continue with other shops.
 - DB write failure: fail run with exit code `1`.
-- Empty extraction:
-  - treat as failure unless a clear no-results condition is detected.
+- Aggregate run status:
+  - `ok`: all shops successful
+  - `partial`: at least one shop failed, at least one shop succeeded
+  - `failed`: all enabled shops failed
 
 ## Logging Schema
 
 - `run_started` with timestamp and config (`headless`, timeout)
-- `sitemap_loaded` with discovered URL count
-- `api_fetched` with success/fail counts
-- `fallback_fetched` with success/fail counts
-- `products_valid` with valid/skipped counts and buyable-filtered count
-- `db_upsert_completed` with inserted/updated estimate
+- `shop_started` with shop id
+- `shop_completed` with discovered/selected/valid/upsert/history counts
+- `shop_failed` with shop id and error
+- `db_upsert_completed` with offer/canonical write summary
 - `run_finished` with duration and exit status
 
 ## Exit Codes
 
 - `0`: successful run (including partial product skips)
-- `1`: fatal failure (navigation unrecoverable, env invalid, DB failure)
+- `1`: fatal failure (env invalid, DB failure, or all enabled shops failed)

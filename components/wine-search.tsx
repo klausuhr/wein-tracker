@@ -1,33 +1,39 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { WineRow } from "@/lib/supabase/types";
+
+type SearchOffer = {
+  id: string;
+  shop: "denner" | "ottos";
+  name: string;
+  current_price: number;
+  base_price: number | null;
+  case_price: number | null;
+  case_size: number | null;
+  is_on_sale: boolean;
+  wine_type: string | null;
+  country: string | null;
+  region: string | null;
+  vintage_year: number | null;
+  canonical_wine_id: string;
+  canonical_wines: {
+    name: string;
+    bottle_volume_cl: number | null;
+  } | null;
+};
 
 type Props = {
-  wines: Pick<
-    WineRow,
-    | "id"
-    | "name"
-    | "current_price"
-    | "base_price"
-    | "case_price"
-    | "case_size"
-    | "bottle_volume_cl"
-    | "is_on_sale"
-    | "wine_type"
-    | "country"
-    | "region"
-    | "vintage_year"
-  >[];
+  wines: SearchOffer[];
 };
 
 export function WineSearch({ wines }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [query, setQuery] = useState("");
-  const [selectedWineId, setSelectedWineId] = useState<string>("");
+  const [selectedOfferId, setSelectedOfferId] = useState<string>("");
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
+  const [trackAllShops, setTrackAllShops] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [verifyUrlPreview, setVerifyUrlPreview] = useState<string | null>(null);
@@ -38,15 +44,32 @@ export function WineSearch({ wines }: Props) {
       .normalize("NFKD")
       .replace(/[\u0300-\u036f]/g, "");
 
+  const canonicalName = (offer: SearchOffer) => offer.canonical_wines?.name ?? offer.name;
+
   const filtered = useMemo(() => {
     const cleanQuery = normalized(query.trim());
-    if (!cleanQuery) return wines.slice(0, 10);
+    if (!cleanQuery) return wines.slice(0, 12);
     return wines
-      .filter((wine) => normalized(wine.name).includes(cleanQuery))
-      .slice(0, 10);
+      .filter((offer) => {
+        const fields = [
+          canonicalName(offer),
+          offer.name,
+          offer.country ?? "",
+          offer.region ?? "",
+          offer.wine_type ?? "",
+          offer.shop
+        ];
+        return fields.some((field) => normalized(field).includes(cleanQuery));
+      })
+      .slice(0, 20);
   }, [wines, query]);
 
-  const selectedWine = wines.find((wine) => wine.id === selectedWineId) ?? null;
+  const selectedOffer = wines.find((offer) => offer.id === selectedOfferId) ?? null;
+  const selectedCanonicalId = selectedOffer?.canonical_wine_id ?? null;
+  const relatedOffers = selectedCanonicalId
+    ? wines.filter((offer) => offer.canonical_wine_id === selectedCanonicalId)
+    : [];
+  const shopCount = new Set(relatedOffers.map((offer) => offer.shop)).size;
 
   useEffect(() => {
     function handleOutsideClick(event: MouseEvent) {
@@ -68,8 +91,8 @@ export function WineSearch({ wines }: Props) {
     setError(null);
     setVerifyUrlPreview(null);
 
-    if (!selectedWineId) {
-      setError("Please select a wine first.");
+    if (!selectedOfferId) {
+      setError("Please select a wine offer first.");
       return;
     }
     if (!email.trim()) {
@@ -77,27 +100,48 @@ export function WineSearch({ wines }: Props) {
       return;
     }
 
+    const targetOffers = trackAllShops ? relatedOffers : relatedOffers.filter((offer) => offer.id === selectedOfferId);
+    if (targetOffers.length === 0) {
+      setError("No offers selected.");
+      return;
+    }
+
     setBusy(true);
     try {
-      const response = await fetch("/api/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, wineId: selectedWineId })
-      });
+      const failures: string[] = [];
+      let lastPreview: string | null = null;
 
-      const payload = (await response.json()) as {
-        ok?: boolean;
-        message?: string;
-        error?: string;
-        verifyUrlPreview?: string;
-      };
+      for (const offer of targetOffers) {
+        const response = await fetch("/api/subscribe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, offerId: offer.id })
+        });
 
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Subscription failed.");
+        const payload = (await response.json()) as {
+          ok?: boolean;
+          message?: string;
+          error?: string;
+          verifyUrlPreview?: string;
+        };
+
+        if (!response.ok) {
+          failures.push(`${offer.shop}: ${payload.error ?? "Subscription failed."}`);
+        } else if (payload.verifyUrlPreview) {
+          lastPreview = payload.verifyUrlPreview;
+        }
       }
 
-      setMessage(payload.message ?? "Please check your inbox.");
-      setVerifyUrlPreview(payload.verifyUrlPreview ?? null);
+      if (failures.length > 0) {
+        throw new Error(failures.join(" | "));
+      }
+
+      setMessage(
+        trackAllShops
+          ? `Tracking created for ${targetOffers.length} shop offers. Please check your email.`
+          : "Please check your email and confirm your tracking."
+      );
+      setVerifyUrlPreview(lastPreview);
       setEmail("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unknown error.");
@@ -110,8 +154,7 @@ export function WineSearch({ wines }: Props) {
     <section className="rounded-3xl border border-[#d7c8af] bg-[#fffaf2] p-5 shadow-[0_16px_40px_rgba(93,58,31,0.12)] sm:p-6">
       <h2 className="text-3xl text-[#2c211a]">Track a wine</h2>
       <p className="mt-1 text-sm text-[#655141]">
-        Suche mit Autocomplete, dann Track starten. Du siehst direkt Land, Region, Jahrgang sowie
-        Stück- und Kartonpreis.
+        Suche mit Shop-Quelle, waehle ein Angebot und tracke optional alle Shops fuer denselben Wein.
       </p>
 
       <label className="mt-4 block text-sm font-medium text-[#5e4736]" htmlFor="wine-search">
@@ -135,7 +178,8 @@ export function WineSearch({ wines }: Props) {
             setQuery(nextValue);
             setOpen(true);
             if (!nextValue.trim()) {
-              setSelectedWineId("");
+              setSelectedOfferId("");
+              setTrackAllShops(false);
             }
           }}
         />
@@ -145,38 +189,49 @@ export function WineSearch({ wines }: Props) {
             {filtered.length === 0 ? (
               <p className="px-4 py-3 text-sm text-[#7e6751]">No wines found.</p>
             ) : (
-              filtered.map((wine) => (
-                <button
-                  key={wine.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedWineId(wine.id);
-                    setQuery(wine.name);
-                    setOpen(false);
-                  }}
-                  className={`block w-full border-b border-[#f0e6d8] px-4 py-3 text-left text-sm last:border-b-0 ${
-                    wine.id === selectedWineId
-                      ? "bg-[#f7e5cf] text-[#6c2e1f]"
-                      : "text-[#2f241c] hover:bg-[#f8f1e6]"
-                  }`}
-                >
-                  <p className="font-medium">{wine.name}</p>
-                  <p className="mt-1 text-xs text-[#6c5745]">
-                    {wine.wine_type ?? "Wein"} · {wine.country ?? "Unbekannt"}
-                    {wine.region ? ` · ${wine.region}` : ""}
-                    {wine.vintage_year ? ` · ${wine.vintage_year}` : ""}
-                    {wine.bottle_volume_cl != null ? ` · ${Number(wine.bottle_volume_cl).toFixed(0)} cl` : ""}
-                  </p>
-                  <p className="mt-1 text-xs font-medium text-[#4e3927]">
-                    Flasche CHF {Number(wine.current_price).toFixed(2)}
-                    {wine.case_price != null
-                      ? ` · Karton CHF ${Number(wine.case_price).toFixed(2)}${
-                          wine.case_size ? ` (${wine.case_size}x)` : ""
-                        }`
-                      : ""}
-                  </p>
-                </button>
-              ))
+              filtered.map((offer) => {
+                const offerCanonicalName = canonicalName(offer);
+                const canonicalOffers = wines.filter((item) => item.canonical_wine_id === offer.canonical_wine_id);
+                const offerShopCount = new Set(canonicalOffers.map((item) => item.shop)).size;
+                return (
+                  <button
+                    key={offer.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedOfferId(offer.id);
+                      setQuery(offerCanonicalName);
+                      setOpen(false);
+                    }}
+                    className={`block w-full border-b border-[#f0e6d8] px-4 py-3 text-left text-sm last:border-b-0 ${
+                      offer.id === selectedOfferId
+                        ? "bg-[#f7e5cf] text-[#6c2e1f]"
+                        : "text-[#2f241c] hover:bg-[#f8f1e6]"
+                    }`}
+                  >
+                    <p className="font-medium">{offerCanonicalName}</p>
+                    <p className="mt-1 text-xs text-[#6c5745]">
+                      <span className="rounded bg-[#efe3d2] px-2 py-0.5 uppercase tracking-[0.08em]">
+                        {offer.shop}
+                      </span>
+                      <span className="ml-2">{offer.wine_type ?? "Wein"} </span>· {offer.country ?? "Unbekannt"}
+                      {offer.region ? ` · ${offer.region}` : ""}
+                      {offer.vintage_year ? ` · ${offer.vintage_year}` : ""}
+                      {offer.canonical_wines?.bottle_volume_cl != null
+                        ? ` · ${Number(offer.canonical_wines.bottle_volume_cl).toFixed(0)} cl`
+                        : ""}
+                      {offerShopCount > 1 ? ` · ${offerShopCount} Shops` : ""}
+                    </p>
+                    <p className="mt-1 text-xs font-medium text-[#4e3927]">
+                      Flasche CHF {Number(offer.current_price).toFixed(2)}
+                      {offer.case_price != null
+                        ? ` · Karton CHF ${Number(offer.case_price).toFixed(2)}${
+                            offer.case_size ? ` (${offer.case_size}x)` : ""
+                          }`
+                        : ""}
+                    </p>
+                  </button>
+                );
+              })
             )}
           </div>
         ) : null}
@@ -187,21 +242,29 @@ export function WineSearch({ wines }: Props) {
         className="mt-5 rounded-2xl border border-dashed border-[#c9b28f] bg-[#fffefb] p-4"
       >
         <p className="text-sm font-medium text-[#2b2119]">
-          {selectedWine ? `Selected: ${selectedWine.name}` : "Select a wine to continue"}
+          {selectedOffer ? `Selected: ${canonicalName(selectedOffer)} (${selectedOffer.shop})` : "Select an offer"}
         </p>
-        {selectedWine ? (
+        {selectedOffer ? (
           <p className="mt-1 text-xs text-[#6a5544]">
-            {selectedWine.wine_type ?? "Wein"} · {selectedWine.country ?? "Unbekannt"}
-            {selectedWine.region ? ` · ${selectedWine.region}` : ""}
-            {selectedWine.vintage_year ? ` · ${selectedWine.vintage_year}` : ""} · Flasche CHF{" "}
-            {Number(selectedWine.current_price).toFixed(2)}
-            {selectedWine.bottle_volume_cl != null
-              ? ` (${Number(selectedWine.bottle_volume_cl).toFixed(0)} cl)`
+            {selectedOffer.wine_type ?? "Wein"} · {selectedOffer.country ?? "Unbekannt"}
+            {selectedOffer.region ? ` · ${selectedOffer.region}` : ""}
+            {selectedOffer.vintage_year ? ` · ${selectedOffer.vintage_year}` : ""} · Flasche CHF{" "}
+            {Number(selectedOffer.current_price).toFixed(2)}
+            {selectedOffer.case_price != null
+              ? ` · Karton CHF ${Number(selectedOffer.case_price).toFixed(2)}`
               : ""}
-            {selectedWine.case_price != null
-              ? ` · Karton CHF ${Number(selectedWine.case_price).toFixed(2)}`
-              : ""}
+            {shopCount > 1 ? ` · Auch in ${shopCount - 1} weiterem Shop verfügbar` : ""}
           </p>
+        ) : null}
+        {selectedOffer && relatedOffers.length > 1 ? (
+          <label className="mt-3 flex items-center gap-2 text-xs text-[#5f4939]">
+            <input
+              type="checkbox"
+              checked={trackAllShops}
+              onChange={(event) => setTrackAllShops(event.target.checked)}
+            />
+            Track all available shop offers for this wine
+          </label>
         ) : null}
         <label className="mt-3 block text-sm font-medium text-stone-800" htmlFor="email">
           Email
@@ -219,7 +282,7 @@ export function WineSearch({ wines }: Props) {
           disabled={busy}
           className="mt-3 rounded-xl bg-[#6f1d1b] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#5b1716] disabled:cursor-not-allowed disabled:opacity-70"
         >
-          {busy ? "Submitting..." : "Track this wine"}
+          {busy ? "Submitting..." : trackAllShops ? "Track all shop offers" : "Track this offer"}
         </button>
 
         {message ? <p className="mt-3 text-sm text-emerald-700">{message}</p> : null}
