@@ -76,9 +76,11 @@ export async function upsertWineOffers(
 
   let canonicalCreated = 0;
   if (missingCanonicalRows.length > 0) {
-    const { error: insertCanonicalError } = await client.from("canonical_wines").insert(missingCanonicalRows);
-    if (insertCanonicalError) {
-      throw new Error(`Canonical insert failed: ${insertCanonicalError.message}`);
+    const { error: upsertCanonicalError } = await client
+      .from("canonical_wines")
+      .upsert(missingCanonicalRows, { onConflict: "canonical_key", ignoreDuplicates: true });
+    if (upsertCanonicalError) {
+      throw new Error(`Canonical upsert failed: ${upsertCanonicalError.message}`);
     }
     canonicalCreated = missingCanonicalRows.length;
   }
@@ -129,14 +131,25 @@ export async function upsertWineOffers(
     const fallbackSeed = seedByKey.get(key);
     if (!fallbackSeed) continue;
 
-    const { data: insertedRow, error: fallbackInsertError } = await client
+    const { error: fallbackUpsertError } = await client
       .from("canonical_wines")
-      .insert(fallbackSeed)
-      .select("id, canonical_key")
-      .single();
+      .upsert(fallbackSeed, { onConflict: "canonical_key", ignoreDuplicates: true });
 
-    if (fallbackInsertError) {
-      throw new Error(`Canonical fallback insert failed: ${fallbackInsertError.message}`);
+    if (fallbackUpsertError) {
+      throw new Error(`Canonical fallback upsert failed: ${fallbackUpsertError.message}`);
+    }
+
+    const { data: insertedRow, error: fallbackReloadError } = await client
+      .from("canonical_wines")
+      .select("id, canonical_key")
+      .eq("canonical_key", key)
+      .maybeSingle();
+
+    if (fallbackReloadError) {
+      throw new Error(`Canonical fallback reload failed: ${fallbackReloadError.message}`);
+    }
+    if (!insertedRow?.id) {
+      throw new Error(`Canonical fallback mapping still missing for key: ${key}`);
     }
     canonicalIdByKey.set(insertedRow.canonical_key, insertedRow.id);
   }
