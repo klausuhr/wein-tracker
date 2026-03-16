@@ -96,6 +96,61 @@ function parseBottleVolumeCl(input: string | null | undefined): number | null {
   return value;
 }
 
+function normalizeComparableName(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function toCents(value: number): number {
+  return Math.round(value * 100);
+}
+
+function hasUnknownWineMetadata(wine: ScrapedWine): boolean {
+  return (
+    wine.wine_type == null &&
+    wine.country == null &&
+    wine.region == null &&
+    wine.vintage_year == null
+  );
+}
+
+function removeSuspiciousDennerCasePriceRows(wines: ScrapedWine[]): {
+  filtered: ScrapedWine[];
+  dropped: number;
+} {
+  const casePriceByName = new Map<string, Set<number>>();
+  for (const wine of wines) {
+    if (wine.case_price == null) continue;
+    const key = normalizeComparableName(wine.name);
+    if (!key) continue;
+    const prices = casePriceByName.get(key) ?? new Set<number>();
+    prices.add(toCents(wine.case_price));
+    casePriceByName.set(key, prices);
+  }
+
+  let dropped = 0;
+  const filtered = wines.filter((wine) => {
+    if (!hasUnknownWineMetadata(wine)) return true;
+    if (wine.case_price != null || wine.case_base_price != null) return true;
+    const key = normalizeComparableName(wine.name);
+    if (!key) return true;
+    const knownCasePrices = casePriceByName.get(key);
+    if (!knownCasePrices || knownCasePrices.size === 0) return true;
+    if (knownCasePrices.has(toCents(wine.current_price))) {
+      dropped += 1;
+      return false;
+    }
+    return true;
+  });
+
+  return { filtered, dropped };
+}
+
 function toNumberOrNull(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string") {
@@ -447,20 +502,22 @@ async function run(startedAt: Date, options: RunScrapeWinesOptions): Promise<Run
   });
 
   const merged = deduplicateByDennerProductId(deduplicateBySlug([...apiWines, ...fallbackWines]));
+  const dennerFiltered = removeSuspiciousDennerCasePriceRows(merged);
   log("products_valid", {
-    valid: merged.length,
+    valid: dennerFiltered.filtered.length,
+    dropped_suspicious_denner_rows: dennerFiltered.dropped,
     api: apiWines.length,
     fallback: fallbackWines.length
   });
 
-  if (merged.length === 0) {
+  if (dennerFiltered.filtered.length === 0) {
     throw new Error("No valid wine records extracted from API and fallback.");
   }
 
-  const result = await upsertWines(merged);
+  const result = await upsertWines(dennerFiltered.filtered);
   log("db_upsert_completed", result);
 
-  const historyResult = await insertWinePriceHistory(merged);
+  const historyResult = await insertWinePriceHistory(dennerFiltered.filtered);
   log("history_insert_completed", historyResult);
 
   let ottosOffers: ScrapedOffer[] = [];
@@ -479,7 +536,7 @@ async function run(startedAt: Date, options: RunScrapeWinesOptions): Promise<Run
     log("ottos_api_failed", { message: ottosErrorMessage });
   }
 
-  const dennerOffers = merged.map(mapDennerWineToOffer);
+  const dennerOffers = dennerFiltered.filtered.map(mapDennerWineToOffer);
   const allOffers = [...dennerOffers, ...ottosOffers];
   const offerUpsertResult = await upsertWineOffers(allOffers);
   const offerHistoryResult = await insertOfferPriceHistory(allOffers);
@@ -506,6 +563,7 @@ async function run(startedAt: Date, options: RunScrapeWinesOptions): Promise<Run
         api_failed: apiFailed,
         fallback_success: fallbackSuccess,
         fallback_failed: fallbackFailed,
+        dropped_suspicious_denner_rows: dennerFiltered.dropped,
         upsert_written_count: result.writtenCount,
         history_inserted: historyResult.inserted,
         offers_written: offerUpsertResult.offers_written,
