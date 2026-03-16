@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
-type SearchOffer = {
+export type SearchOffer = {
   id: string;
   shop: "denner" | "ottos";
   name: string;

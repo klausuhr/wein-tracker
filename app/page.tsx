@@ -1,13 +1,63 @@
 import { Wine } from "lucide-react";
 import { createServerAdminClient } from "@/lib/supabase/server-admin";
-import { WineSearch } from "@/components/wine-search";
+import { WineSearch, type SearchOffer } from "@/components/wine-search";
 
 export const dynamic = "force-dynamic";
+
+type CanonicalJoinedRow = {
+  name: string;
+  bottle_volume_cl: number | null;
+  case_size: number | null;
+  wine_type: string | null;
+  country: string | null;
+  region: string | null;
+  vintage_year: number | null;
+};
+
+type WineOfferRowForSearch = {
+  id: string;
+  shop: SearchOffer["shop"];
+  name: string;
+  current_price: number;
+  base_price: number | null;
+  case_price: number | null;
+  is_on_sale: boolean;
+  canonical_wine_id: string;
+  canonical_wines: CanonicalJoinedRow | CanonicalJoinedRow[] | null;
+};
+
+function mapRowToSearchOffer(row: WineOfferRowForSearch): SearchOffer {
+  const canonical = Array.isArray(row.canonical_wines)
+    ? row.canonical_wines[0] ?? null
+    : row.canonical_wines ?? null;
+
+  return {
+    id: row.id,
+    shop: row.shop,
+    name: row.name,
+    current_price: row.current_price,
+    base_price: row.base_price,
+    case_price: row.case_price,
+    is_on_sale: row.is_on_sale,
+    canonical_wine_id: row.canonical_wine_id,
+    wine_type: canonical?.wine_type ?? null,
+    country: canonical?.country ?? null,
+    region: canonical?.region ?? null,
+    vintage_year: canonical?.vintage_year ?? null,
+    case_size: canonical?.case_size ?? null,
+    canonical_wines: canonical
+      ? {
+          name: canonical.name,
+          bottle_volume_cl: canonical.bottle_volume_cl
+        }
+      : null
+  };
+}
 
 export default async function HomePage() {
   const supabase = createServerAdminClient();
   const pageSize = 1000;
-  const allRows: Array<Record<string, any>> = [];
+  const allRows: WineOfferRowForSearch[] = [];
   let from = 0;
   let error: { message: string } | null = null;
 
@@ -26,37 +76,12 @@ export default async function HomePage() {
     }
 
     const rows = data ?? [];
-    allRows.push(...(rows as Array<Record<string, any>>));
+    allRows.push(...(rows as WineOfferRowForSearch[]));
     if (rows.length < pageSize) break;
     from += pageSize;
   }
 
-  const wines = allRows.map((row) => {
-    const canonical = Array.isArray(row.canonical_wines)
-      ? row.canonical_wines[0] ?? null
-      : row.canonical_wines ?? null;
-    return {
-      id: String(row.id ?? ""),
-      shop: row.shop,
-      name: row.name,
-      current_price: row.current_price,
-      base_price: row.base_price,
-      case_price: row.case_price,
-      is_on_sale: row.is_on_sale,
-      canonical_wine_id: row.canonical_wine_id,
-      wine_type: canonical?.wine_type ?? null,
-      country: canonical?.country ?? null,
-      region: canonical?.region ?? null,
-      vintage_year: canonical?.vintage_year ?? null,
-      case_size: canonical?.case_size ?? null,
-      canonical_wines: canonical
-        ? {
-            name: canonical.name,
-            bottle_volume_cl: canonical.bottle_volume_cl
-          }
-        : null
-    };
-  });
+  const wines = allRows.map(mapRowToSearchOffer);
 
   return (
     <main className="ui-shell mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-10 sm:px-6">
@@ -87,7 +112,7 @@ export default async function HomePage() {
           Failed to load wines from Supabase: {error.message}
         </div>
       ) : (
-        <WineSearch wines={wines as any} />
+        <WineSearch wines={wines} />
       )}
     </main>
   );
