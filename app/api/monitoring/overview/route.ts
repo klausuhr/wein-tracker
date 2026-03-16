@@ -3,6 +3,7 @@ import { getServerEnv } from "@/lib/env";
 import { createServerAdminClient } from "@/lib/supabase/server-admin";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export async function GET(request: Request) {
   const env = getServerEnv();
@@ -45,14 +46,19 @@ export async function GET(request: Request) {
     );
   }
 
-  return NextResponse.json({
-    ok: true,
-    checked_at: new Date().toISOString(),
-    wines: {
-      total: wineTotalRes.count ?? 0,
-      on_sale: onSaleRes.count ?? 0,
-      last_scraped_at: lastScrapedRes.data?.[0]?.last_scraped_at ?? null
+  return NextResponse.json(
+    {
+      ok: true,
+      checked_at: new Date().toISOString(),
+      wines: {
+        total: wineTotalRes.count ?? 0,
+        on_sale: onSaleRes.count ?? 0,
+        last_scraped_at: lastScrapedRes.data?.[0]?.last_scraped_at ?? null
+      },
+      recent_runs: recentRunsRes.data ?? []
     },
-    recent_runs: recentRunsRes.data ?? []
-  });
+    {
+      headers: { "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate" }
+    }
+  );
 }
