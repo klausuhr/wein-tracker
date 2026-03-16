@@ -139,6 +139,7 @@ type OttosSearchProduct = {
   price?: { value?: number };
   insteadOfPrice?: { value?: number };
   categories?: Array<{ name?: string }>;
+  tags?: string[];
 };
 
 type OttosSearchResponse = {
@@ -161,6 +162,10 @@ function mapOttosProductToOffer(product: OttosSearchProduct): ScrapedOffer | nul
   if (currentPrice == null) return null;
 
   const basePrice = toNumberOrNull(product.insteadOfPrice?.value);
+  const tags = Array.isArray(product.tags)
+    ? product.tags.map((tag) => String(tag).trim().toLowerCase()).filter(Boolean)
+    : [];
+  const hasPromoTag = tags.some((tag) => tag.includes("promo") || tag.includes("aktion"));
   const sourceUrl = toAbsoluteOttosProductUrl(product.url) ?? `https://www.ottos.ch/p/${code}`;
   const categoryTitles = Array.isArray(product.categories)
     ? product.categories
@@ -198,7 +203,7 @@ function mapOttosProductToOffer(product: OttosSearchProduct): ScrapedOffer | nul
     category_path: categoryTitles.length > 0 ? categoryTitles.join(" > ") : null,
     bottle_volume_cl: bottleVolumeCl,
     case_size: null,
-    is_on_sale: basePrice != null ? currentPrice < basePrice : false
+    is_on_sale: basePrice != null ? currentPrice < basePrice : hasPromoTag
   };
 }
 
