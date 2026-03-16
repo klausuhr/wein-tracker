@@ -68,6 +68,7 @@ export default async function HomePage() {
         "id, shop, name, current_price, base_price, case_price, is_on_sale, canonical_wine_id, canonical_wines(name,bottle_volume_cl,case_size,wine_type,country,region,vintage_year)"
       )
       .order("name", { ascending: true })
+      .order("id", { ascending: true })
       .range(from, from + pageSize - 1);
 
     if (pageError) {
@@ -81,7 +82,9 @@ export default async function HomePage() {
     from += pageSize;
   }
 
-  const wines = allRows.map(mapRowToSearchOffer);
+  const wines = Array.from(
+    new Map(allRows.map((row) => [row.id, row])).values()
+  ).map(mapRowToSearchOffer);
 
   return (
     <main className="ui-shell mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-10 sm:px-6">
