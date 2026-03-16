@@ -9,7 +9,7 @@ export default async function HomePage() {
   const { data, error } = await supabase
     .from("wine_offers")
     .select(
-      "id, shop, name, current_price, base_price, case_price, is_on_sale, wine_type, country, region, vintage_year, canonical_wine_id, canonical_wines(name,bottle_volume_cl,case_size)"
+      "id, shop, name, current_price, base_price, case_price, is_on_sale, canonical_wine_id, canonical_wines(name,bottle_volume_cl,case_size,wine_type,country,region,vintage_year)"
     )
     .order("name", { ascending: true })
     .limit(1500);
@@ -50,6 +50,10 @@ export default async function HomePage() {
               : row.canonical_wines ?? null;
             return {
               ...row,
+              wine_type: canonical?.wine_type ?? null,
+              country: canonical?.country ?? null,
+              region: canonical?.region ?? null,
+              vintage_year: canonical?.vintage_year ?? null,
               case_size: canonical?.case_size ?? null,
               canonical_wines: canonical
             };

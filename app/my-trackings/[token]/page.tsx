@@ -30,7 +30,7 @@ export default async function MyTrackingsPage({ params, searchParams }: PageProp
   const { data, error } = await supabase
     .from("subscriptions")
     .select(
-      "id, is_confirmed, wine_offers(shop,name,current_price,base_price,case_price,is_on_sale,wine_type,country,region,vintage_year,canonical_wines(name,case_size))"
+      "id, is_confirmed, wine_offers(shop,name,current_price,base_price,case_price,is_on_sale,canonical_wines(name,case_size,wine_type,country,region,vintage_year))"
     )
     .eq("email", payload.email)
     .order("created_at", { ascending: false });
@@ -71,10 +71,10 @@ export default async function MyTrackingsPage({ params, searchParams }: PageProp
                 case_price: offer.case_price,
                 case_size: canonical?.case_size ?? null,
                 is_on_sale: offer.is_on_sale,
-                wine_type: offer.wine_type,
-                country: offer.country,
-                region: offer.region,
-                vintage_year: offer.vintage_year
+                wine_type: canonical?.wine_type ?? null,
+                country: canonical?.country ?? null,
+                region: canonical?.region ?? null,
+                vintage_year: canonical?.vintage_year ?? null
               };
             })()
           }))}
