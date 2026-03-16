@@ -3,6 +3,7 @@ import { createServerAdminClient } from "../supabase/server-admin";
 import type { ScrapedOffer, ShopId } from "../supabase/types";
 
 const BATCH_SIZE = 200;
+const LOOKUP_BATCH_SIZE = 120;
 
 type UpsertOffersResult = {
   offers_requested: number;
@@ -54,13 +55,18 @@ export async function upsertWineOffers(
   const canonicalSeeds = offers.map(toCanonicalSeed);
   const keys = Array.from(new Set(canonicalSeeds.map((seed) => seed.canonical_key)));
 
-  const { data: existingCanonicalRows, error: existingCanonicalError } = await client
-    .from("canonical_wines")
-    .select("id, canonical_key")
-    .in("canonical_key", keys);
+  const existingCanonicalRows: Array<{ id: string; canonical_key: string }> = [];
+  for (let index = 0; index < keys.length; index += LOOKUP_BATCH_SIZE) {
+    const batchKeys = keys.slice(index, index + LOOKUP_BATCH_SIZE);
+    const { data: batchRows, error: batchError } = await client
+      .from("canonical_wines")
+      .select("id, canonical_key")
+      .in("canonical_key", batchKeys);
 
-  if (existingCanonicalError) {
-    throw new Error(`Canonical lookup failed: ${existingCanonicalError.message}`);
+    if (batchError) {
+      throw new Error(`Canonical lookup failed: ${batchError.message}`);
+    }
+    existingCanonicalRows.push(...(batchRows ?? []));
   }
 
   const existingKeys = new Set((existingCanonicalRows ?? []).map((row) => row.canonical_key));
@@ -77,13 +83,18 @@ export async function upsertWineOffers(
     canonicalCreated = missingCanonicalRows.length;
   }
 
-  const { data: allCanonicalRows, error: allCanonicalError } = await client
-    .from("canonical_wines")
-    .select("id, canonical_key")
-    .in("canonical_key", keys);
+  const allCanonicalRows: Array<{ id: string; canonical_key: string }> = [];
+  for (let index = 0; index < keys.length; index += LOOKUP_BATCH_SIZE) {
+    const batchKeys = keys.slice(index, index + LOOKUP_BATCH_SIZE);
+    const { data: batchRows, error: batchError } = await client
+      .from("canonical_wines")
+      .select("id, canonical_key")
+      .in("canonical_key", batchKeys);
 
-  if (allCanonicalError) {
-    throw new Error(`Canonical reload failed: ${allCanonicalError.message}`);
+    if (batchError) {
+      throw new Error(`Canonical reload failed: ${batchError.message}`);
+    }
+    allCanonicalRows.push(...(batchRows ?? []));
   }
 
   const canonicalIdByKey = new Map<string, string>();
