@@ -6,13 +6,57 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const supabase = createServerAdminClient();
-  const { data, error } = await supabase
-    .from("wine_offers")
-    .select(
-      "id, shop, name, current_price, base_price, case_price, is_on_sale, canonical_wine_id, canonical_wines(name,bottle_volume_cl,case_size,wine_type,country,region,vintage_year)"
-    )
-    .order("name", { ascending: true })
-    .limit(1500);
+  const pageSize = 1000;
+  const allRows: Array<Record<string, any>> = [];
+  let from = 0;
+  let error: { message: string } | null = null;
+
+  while (true) {
+    const { data, error: pageError } = await supabase
+      .from("wine_offers")
+      .select(
+        "id, shop, name, current_price, base_price, case_price, is_on_sale, canonical_wine_id, canonical_wines(name,bottle_volume_cl,case_size,wine_type,country,region,vintage_year)"
+      )
+      .order("name", { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (pageError) {
+      error = { message: pageError.message };
+      break;
+    }
+
+    const rows = data ?? [];
+    allRows.push(...(rows as Array<Record<string, any>>));
+    if (rows.length < pageSize) break;
+    from += pageSize;
+  }
+
+  const wines = allRows.map((row) => {
+    const canonical = Array.isArray(row.canonical_wines)
+      ? row.canonical_wines[0] ?? null
+      : row.canonical_wines ?? null;
+    return {
+      id: String(row.id ?? ""),
+      shop: row.shop,
+      name: row.name,
+      current_price: row.current_price,
+      base_price: row.base_price,
+      case_price: row.case_price,
+      is_on_sale: row.is_on_sale,
+      canonical_wine_id: row.canonical_wine_id,
+      wine_type: canonical?.wine_type ?? null,
+      country: canonical?.country ?? null,
+      region: canonical?.region ?? null,
+      vintage_year: canonical?.vintage_year ?? null,
+      case_size: canonical?.case_size ?? null,
+      canonical_wines: canonical
+        ? {
+            name: canonical.name,
+            bottle_volume_cl: canonical.bottle_volume_cl
+          }
+        : null
+    };
+  });
 
   return (
     <main className="ui-shell mx-auto flex min-h-screen w-full max-w-5xl flex-col px-4 py-10 sm:px-6">
@@ -32,7 +76,7 @@ export default async function HomePage() {
           </div>
           <div className="rounded-2xl border border-[#d8c8b1] bg-white/80 p-4 text-sm text-[#4f3b2c]">
             <p className="text-xs uppercase tracking-[0.12em] text-[#8b6d4a]">Katalogstatus</p>
-            <p className="mt-2 text-2xl font-semibold text-[#2f241c]">{(data ?? []).length} Weine geladen</p>
+            <p className="mt-2 text-2xl font-semibold text-[#2f241c]">{allRows.length} Weine geladen</p>
             <p className="mt-1 text-xs text-[#7f6752]">inkl. Land, Region, Jahrgang, Stück- und Kartonpreis</p>
           </div>
         </div>
@@ -43,22 +87,7 @@ export default async function HomePage() {
           Failed to load wines from Supabase: {error.message}
         </div>
       ) : (
-        <WineSearch
-          wines={(data ?? []).map((row) => {
-            const canonical = Array.isArray(row.canonical_wines)
-              ? row.canonical_wines[0] ?? null
-              : row.canonical_wines ?? null;
-            return {
-              ...row,
-              wine_type: canonical?.wine_type ?? null,
-              country: canonical?.country ?? null,
-              region: canonical?.region ?? null,
-              vintage_year: canonical?.vintage_year ?? null,
-              case_size: canonical?.case_size ?? null,
-              canonical_wines: canonical
-            };
-          })}
-        />
+        <WineSearch wines={wines as any} />
       )}
     </main>
   );
