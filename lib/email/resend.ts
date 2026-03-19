@@ -19,9 +19,10 @@ async function sendEmail({ to, subject, html }: SendEmailInput): Promise<void> {
     console.warn("[email] RESEND_API_KEY missing, email not sent", { to, subject });
     return;
   }
+  const env = getServerEnv();
 
   const { error } = await client.emails.send({
-    from: "Wein-Ticker <onboarding@resend.dev>",
+    from: env.RESEND_FROM_EMAIL,
     to,
     subject,
     html

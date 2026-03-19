@@ -12,6 +12,10 @@ const serverEnvSchema = publicEnvSchema.extend({
     .optional()
     .transform((value) => value ?? "http://localhost:3000"),
   RESEND_API_KEY: z.string().optional(),
+  RESEND_FROM_EMAIL: z
+    .string()
+    .optional()
+    .transform((value) => value ?? "Wein-Ticker <onboarding@resend.dev>"),
   TRACKING_TOKEN_SECRET: z.string().optional(),
   CRON_SECRET: z.string().optional(),
   SCRAPER_MAX_PRODUCTS: z.string().optional(),
@@ -39,6 +43,7 @@ export function getServerEnv() {
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     APP_BASE_URL: process.env.APP_BASE_URL,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
+    RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL,
     TRACKING_TOKEN_SECRET: process.env.TRACKING_TOKEN_SECRET,
     CRON_SECRET: process.env.CRON_SECRET,
     SCRAPER_MAX_PRODUCTS: process.env.SCRAPER_MAX_PRODUCTS,
