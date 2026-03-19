@@ -23,12 +23,42 @@ export async function upsertWines(
 
   for (let index = 0; index < rows.length; index += BATCH_SIZE) {
     const batch = rows.slice(index, index + BATCH_SIZE);
-    const { error } = await client
-      .from("wines")
-      .upsert(batch, { onConflict: "denner_product_id", ignoreDuplicates: false });
+    const dennerIds = Array.from(
+      new Set(batch.map((row) => row.denner_product_id).filter((value): value is string => Boolean(value)))
+    );
 
-    if (error) {
-      throw new Error(`Supabase upsert failed: ${error.message}`);
+    const { data: existingRows, error: lookupError } = await client
+      .from("wines")
+      .select("denner_product_id")
+      .in("denner_product_id", dennerIds);
+
+    if (lookupError) {
+      throw new Error(`Supabase lookup failed: ${lookupError.message}`);
+    }
+
+    const existingIds = new Set((existingRows ?? []).map((row) => row.denner_product_id));
+    const toUpdate = batch.filter((row) => existingIds.has(row.denner_product_id));
+    const toInsert = batch.filter((row) => !existingIds.has(row.denner_product_id));
+
+    for (const row of toUpdate) {
+      const { error: updateError } = await client
+        .from("wines")
+        .update(row)
+        .eq("denner_product_id", row.denner_product_id);
+
+      if (updateError) {
+        throw new Error(`Supabase update failed: ${updateError.message}`);
+      }
+    }
+
+    if (toInsert.length > 0) {
+      const { error: insertError } = await client
+        .from("wines")
+        .upsert(toInsert, { onConflict: "slug", ignoreDuplicates: false });
+
+      if (insertError) {
+        throw new Error(`Supabase insert failed: ${insertError.message}`);
+      }
     }
     batchCount += 1;
   }
