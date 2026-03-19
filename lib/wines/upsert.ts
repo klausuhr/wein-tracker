@@ -25,7 +25,7 @@ export async function upsertWines(
     const batch = rows.slice(index, index + BATCH_SIZE);
     const { error } = await client
       .from("wines")
-      .upsert(batch, { onConflict: "slug", ignoreDuplicates: false });
+      .upsert(batch, { onConflict: "denner_product_id", ignoreDuplicates: false });
 
     if (error) {
       throw new Error(`Supabase upsert failed: ${error.message}`);
