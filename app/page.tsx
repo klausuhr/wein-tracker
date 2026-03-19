@@ -105,9 +105,8 @@ export default async function HomePage() {
           <div className="rounded-2xl border border-[#d8c8b1] bg-white/80 p-4 text-sm text-[#4f3b2c]">
             <p className="text-xs uppercase tracking-[0.12em] text-[#8b6d4a]">Katalogstatus</p>
             <p className="mt-2 text-2xl font-semibold text-[#2f241c]">{allRows.length} Weine geladen</p>
-            <p className="mt-1 text-xs text-[#7f6752]">
-              Supports: Denner, Ottos · inkl. Land, Region, Jahrgang, Stück- und Kartonpreis
-            </p>
+            <p className="mt-1 text-xs text-[#7f6752]">inkl. Land, Region, Jahrgang, Stück- und Kartonpreis</p>
+            <p className="mt-3 text-sm font-semibold text-[#5b2a1b]">Supports: Denner, Ottos</p>
           </div>
         </div>
       </header>
