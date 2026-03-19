@@ -138,8 +138,8 @@ export function WineSearch({ wines }: Props) {
 
       setMessage(
         trackAllShops
-          ? `Tracking created for ${targetOffers.length} shop offers. Please check your email.`
-          : "Please check your email and confirm your tracking."
+          ? `Tracking für ${targetOffers.length} Shop-Angebote erstellt. Bitte prüfe deine E-Mail.`
+          : "Bitte prüfe deine E-Mail und bestätige dein Tracking."
       );
       setVerifyUrlPreview(lastPreview);
       setEmail("");
@@ -152,9 +152,9 @@ export function WineSearch({ wines }: Props) {
 
   return (
     <section className="rounded-3xl border border-[#d7c8af] bg-[#fffaf2] p-5 shadow-[0_16px_40px_rgba(93,58,31,0.12)] sm:p-6">
-      <h2 className="text-3xl text-[#2c211a]">Track a wine</h2>
+      <h2 className="text-3xl text-[#2c211a]">Track your wine</h2>
       <p className="mt-1 text-sm text-[#655141]">
-        Suche mit Shop-Quelle, waehle ein Angebot und tracke optional alle Shops fuer denselben Wein.
+        Wähle ein Angebot und tracke für alle Shops deine Weine.
       </p>
 
       <label className="mt-4 block text-sm font-medium text-[#5e4736]" htmlFor="wine-search">
@@ -282,7 +282,7 @@ export function WineSearch({ wines }: Props) {
           disabled={busy}
           className="mt-3 rounded-xl bg-[#6f1d1b] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#5b1716] disabled:cursor-not-allowed disabled:opacity-70"
         >
-          {busy ? "Submitting..." : trackAllShops ? "Track all shop offers" : "Track this offer"}
+          {busy ? "Wird gesendet..." : trackAllShops ? "Alle Shops tracken" : "Angebot Tracken"}
         </button>
 
         {message ? <p className="mt-3 text-sm text-emerald-700">{message}</p> : null}

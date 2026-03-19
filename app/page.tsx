@@ -96,16 +96,18 @@ export default async function HomePage() {
         </div>
         <div className="grid gap-5 sm:grid-cols-[1.5fr_1fr] sm:items-end">
           <div>
-            <h1 className="text-4xl leading-tight text-[#2b2119] sm:text-5xl">Wein-Ticker</h1>
+            <h1 className="text-4xl leading-tight text-[#2b2119] sm:text-5xl">Wein-Tracker</h1>
             <p className="mt-2 text-sm text-[#60493a] sm:text-base">
-              Finde deine Weine shop-uebergreifend, tracke Angebote je Shop und werde automatisch
-              benachrichtigt.
+              Finde deine Weine und tracke Angebote/Rabatte je Shop mit automatischer
+              Benachrichtigung.
             </p>
           </div>
           <div className="rounded-2xl border border-[#d8c8b1] bg-white/80 p-4 text-sm text-[#4f3b2c]">
             <p className="text-xs uppercase tracking-[0.12em] text-[#8b6d4a]">Katalogstatus</p>
             <p className="mt-2 text-2xl font-semibold text-[#2f241c]">{allRows.length} Weine geladen</p>
-            <p className="mt-1 text-xs text-[#7f6752]">inkl. Land, Region, Jahrgang, Stück- und Kartonpreis</p>
+            <p className="mt-1 text-xs text-[#7f6752]">
+              Supports: Denner, Ottos · inkl. Land, Region, Jahrgang, Stück- und Kartonpreis
+            </p>
           </div>
         </div>
       </header>
@@ -117,6 +119,8 @@ export default async function HomePage() {
       ) : (
         <WineSearch wines={wines} />
       )}
+
+      <footer className="mt-6 text-right text-xs text-[#7f6752]">V1.0</footer>
     </main>
   );
 }
