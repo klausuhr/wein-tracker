@@ -29,6 +29,34 @@ This file captures the current functional and deployment state so the next sessi
   - `/api/monitoring/overview`
 - Lint/typecheck/tests are green in repo.
 
+## Latest Session Updates (March 16, 2026)
+
+1. Otto's adapter now uses product detail enrichment (`/occ/v2/ottos/products/{code}?fields=FULL`):
+   - better extraction for `country`, `region`, `vintage_year`, `wine_type`, `bottle_volume_cl`, `case_size`, `image_url`
+2. Otto's sale detection improved:
+   - still uses price comparison when available
+   - additionally marks as on-sale when promo tag is present (e.g. `promoted`)
+3. Denner artifact protection added in scraper:
+   - suspicious rows are dropped when:
+     - metadata is fully unknown (`wine_type/country/region/vintage_year` all null)
+     - row has no case fields
+     - `current_price` exactly matches a known case price for same normalized name
+4. Production cleanup executed:
+   - bulk deletion of historical Denner case-price artifacts completed
+   - 18 invalid offer rows removed
+5. Canonical race-condition fix deployed:
+   - canonical creation now conflict-tolerant (`upsert` on `canonical_key`)
+   - prevents intermittent `duplicate key` failures during scrape
+6. Homepage search consistency fix deployed:
+   - stable paging order (`name` + `id`)
+   - row deduplication by offer `id`
+   - resolved phantom duplicate entries in UI despite correct DB state
+7. Cron auth hardening deployed:
+   - `/api/scrape`, `/api/notify`, and `/api/monitoring/overview` accept both:
+     - `Authorization: Bearer <CRON_SECRET>`
+     - `x-cron-secret: <CRON_SECRET>`
+   - preferred standard for manual tests: `x-cron-secret`
+
 ## Current Direction (New Workstream)
 
 - Multi-shop expansion approved:
@@ -75,12 +103,19 @@ This file captures the current functional and deployment state so the next sessi
 
 ## Next Session Plan
 
-1. Add migration for multi-shop schema (`canonical_wines`, `wine_offers`, `subscriptions.offer_id`).
-2. Refactor scraper to adapter-orchestrator and add Otto's adapter.
-3. Switch subscribe/notify/tracking flow from `wine_id` to `offer_id` (compat window).
-4. Update search UI to show shop source and allow tracking both offers.
-5. Verify production smoke tests for Denner + Otto's runs.
-6. After core is stable: continue with custom domain + sender domain work.
+1. Introduce `staging` as mandatory rollout gate for new shop changes (no direct prod-first schema/runtime changes).
+2. Add and use per-shop feature flags in production (deploy dark, enable later).
+3. Add a standard release gate checklist:
+   - lint, typecheck, tests
+   - SQL data quality checks
+   - manual scrape + notify smoke
+4. Standardize job API contract (`/api/scrape` and `/api/notify`) to same method/auth pattern.
+5. Continue operational work:
+   - custom app domain
+   - sender domain / DNS for mail deliverability
+6. Subscription UX improvement (planned):
+   - one-time email verification per address
+   - new offer subscriptions for already verified emails should activate without repeated verification mail
 
 ## Notes / Decisions
 

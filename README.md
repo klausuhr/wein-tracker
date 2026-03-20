@@ -26,6 +26,33 @@ Next.js + Supabase + API-first scraper for tracking wine prices across multiple 
   - per-shop adapters behind one orchestrator
   - one shop failure does not stop other shops
 
+## Release Process For New Shops
+
+To avoid frequent production hotfix cycles, implement new shops with a staged rollout:
+
+1. Develop and validate in `staging` first:
+   - separate Supabase project + Vercel environment
+   - run all migrations and first full scrape there
+2. Ship in small PRs:
+   - schema/migrations
+   - scraper adapter
+   - API changes
+   - UI changes
+3. Use feature flags:
+   - deploy code with `SHOP_<NAME>_ENABLED=false` in production
+   - enable only after data quality checks pass
+4. Run release gate checks before enabling:
+   - `npm run lint`
+   - `npm run typecheck`
+   - `npm test`
+   - SQL smoke checks (offers count, null-rate on metadata, sale-rate sanity)
+5. Enable cron only after successful smoke tests:
+   - first manual scrape + notify
+   - then scheduled jobs
+6. Keep rollback simple:
+   - disable shop via feature flag first
+   - redeploy previous stable commit only if needed
+
 ## 1) Setup
 
 1. Install Node 20.
@@ -66,7 +93,7 @@ The scraper uses:
 ## Scheduled Production Jobs (Vercel Cron)
 
 - Endpoint:
-  - `GET /api/scrape` (requires `Authorization: Bearer <CRON_SECRET>` when `CRON_SECRET` is set)
+  - `GET /api/scrape` (requires cron secret when `CRON_SECRET` is set)
   - Note: Vercel scrape endpoint runs with `useFallback: false` (API-first only) for serverless stability.
 - Cron schedule (`vercel.json`, UTC):
   - scrape: `05:05` UTC (`/api/scrape`)
@@ -117,13 +144,17 @@ Pricing semantics:
 
 ```powershell
 $secret = Read-Host "CRON_SECRET"
-$headers = @{ Authorization = "Bearer $secret" }
+$headers = @{ "x-cron-secret" = $secret }
 
 Invoke-RestMethod -Method GET -Uri "https://wein-tracker-vercel.vercel.app/api/scrape" -Headers $headers | ConvertTo-Json -Depth 6
-Invoke-RestMethod -Method POST -Uri "https://wein-tracker-vercel.vercel.app/api/notify" -Headers $headers | ConvertTo-Json -Depth 6
+Invoke-RestMethod -Method GET -Uri "https://wein-tracker-vercel.vercel.app/api/notify" -Headers $headers | ConvertTo-Json -Depth 6
 Invoke-RestMethod -Method GET -Uri "https://wein-tracker-vercel.vercel.app/api/monitoring/overview" -Headers $headers | ConvertTo-Json -Depth 6
 Invoke-RestMethod -Method GET -Uri "https://wein-tracker-vercel.vercel.app/api/health" | ConvertTo-Json -Depth 6
 ```
+
+Auth note:
+- Use `x-cron-secret` for manual checks and automation.
+- `Authorization` may be dropped by some domain redirects/proxies, while `x-cron-secret` stays reliable.
 
 ## Implemented in Step 1
 
@@ -168,3 +199,12 @@ Invoke-RestMethod -Method GET -Uri "https://wein-tracker-vercel.vercel.app/api/h
   - add a dedicated "count alignment mode" for diagnostics
   - compare by `denner_product_id` against Denner source counts
   - decide whether to relax filters/dedup or keep current stricter quality rules
+
+## Next Steps
+
+1. Add `staging` environment (Supabase + Vercel) and document env separation.
+2. Add per-shop feature flags (`SHOP_DENNER_ENABLED`, `SHOP_OTTOS_ENABLED`) and wire into scraper orchestration.
+3. Add automated post-scrape data quality checks (metadata completeness + sale detection sanity).
+4. Standardize job endpoints (`/api/scrape`, `/api/notify`) to the same HTTP method and auth style.
+5. Move search to server-side query API for scalability beyond full catalog preload.
+6. Improve subscription UX: verify email once per address, then allow adding additional wines/offers without re-verification on each new tracking.
