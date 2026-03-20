@@ -7,7 +7,7 @@ import { createTrackingToken } from "@/lib/tokens/tracking";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(request: Request) {
+async function handleNotify(request: Request) {
   const startedAt = new Date();
   const env = getServerEnv();
   const authHeader = request.headers.get("authorization");
@@ -178,4 +178,12 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ ok: true, total: data?.length ?? 0, sent, failed, skipped });
+}
+
+export async function GET(request: Request) {
+  return handleNotify(request);
+}
+
+export async function POST(request: Request) {
+  return handleNotify(request);
 }
