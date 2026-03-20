@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isCronAuthorized } from "@/lib/auth/cron";
 import { sendSaleAlertEmail } from "@/lib/email/resend";
 import { getServerEnv } from "@/lib/env";
 import { recordJobRun } from "@/lib/monitoring/job-runs";
@@ -10,14 +11,10 @@ export const dynamic = "force-dynamic";
 async function handleNotify(request: Request) {
   const startedAt = new Date();
   const env = getServerEnv();
-  const authHeader = request.headers.get("authorization");
   const supabase = createServerAdminClient();
 
-  if (env.CRON_SECRET) {
-    const expected = `Bearer ${env.CRON_SECRET}`;
-    if (authHeader !== expected) {
-      return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-    }
+  if (!isCronAuthorized(request)) {
+    return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 
   if (!env.RESEND_API_KEY) {
